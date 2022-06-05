@@ -154,11 +154,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 			          textToRender, textFormat, 200, textFormat.FontSize);
 			 
 					// middle point
-					var mis = (startX - endX) ;
-					Print("Start " + startX + " end " + endPoint);
-					SharpDX.Vector2 midPoint = new SharpDX.Vector2(endX, chartScaleYValue);
+//					var mid = ( endX - 450);
+//					Print("Start " + startX + " end " + endPoint);
+//					SharpDX.Vector2 midPoint = new SharpDX.Vector2(mid, chartScaleYValue);
 			        // draw a line at each plot using the plots SharpDX Brush color at the calculated start point
-			        RenderTarget.DrawTextLayout(startPoint, textLayout, Plots[seriesCount].BrushDX);
+			        RenderTarget.DrawTextLayout(endPoint, textLayout, Plots[seriesCount].BrushDX);
 			 
 			        // dipose of the unmanaged resources used
 			        textLayout.Dispose();
@@ -169,6 +169,9 @@ namespace NinjaTrader.NinjaScript.Indicators
 
 		protected override void OnBarUpdate()
 		{
+			/// MARK: - TODO - draw the line lables with sharp dx
+			/// MARK: - TODO - draw the gap box with sharp dx
+			
 			if (CurrentBar < 20 ) { return; }
 			lastBar = CurrentBar - 1;
 			CheckHolidayOrSunday();
@@ -346,7 +349,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private void LineText(string name, double price) { 
 			DateTime myDate = Time[0];   
 			string prettyDate = myDate.ToString("MM/d/yyyy"); 
-			//Draw.Text(this, name+prettyDate, false, name, -BarsRight, price, 0,  LineColor, myFont, TextAlignment.Left, Brushes.Transparent, LineColor, 0);
+			Draw.Text(this, name+prettyDate, false, name, -BarsRight, price, 0,  LineColor, myFont, TextAlignment.Left, Brushes.Transparent, LineColor, 0);
 		}
 		
 		private bool IsEqual(int start, int end) {
