@@ -38,6 +38,10 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private double 	gxHigh 		= 0.0;
 	    private double  gxLow 		= 0.0;
 		private double 	gxMid 		= 0.0;
+		private double 	RrthHigh 	= 0.0;
+	    private double  RrthLow 		= 0.0;
+		private double 	RrthMid 		= 0.0;
+		
 		private double  todayOpen 	= 0.0;
 		private double  Gap_D 		= 0.0;
 		private double  Close_D 	= 0.0;
@@ -97,6 +101,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AddPlot(Brushes.DimGray, "IB High");
 				AddPlot(Brushes.DimGray, "IB Low");
 				AddPlot(Brushes.DimGray, "Half Gap"); 
+				AddPlot(Brushes.DimGray, "Mid");
 			}
 			else if (State == State.Configure)
 			{
@@ -171,17 +176,25 @@ namespace NinjaTrader.NinjaScript.Indicators
 		{
 			/// MARK: - TODO - draw the line lables with sharp dx
 			/// MARK: - TODO - draw the gap box with sharp dx
+			/// 
+			
+			// must change the day limit to draw only... this is affecting highs and lows
+			// code a way to plot only the last daty.. id monday plot 4 tuestday plot 1
+			//  array of daily high / low to shhow weekly levels
+			// switches for all levels
 			
 			if (CurrentBar < 20 ) { return; }
 			lastBar = CurrentBar - 1;
 			CheckHolidayOrSunday();
 			checkDaysAgo();
-			if ( !showKeyLevels ) { return; } // or sunday
+			if ( !showKeyLevels ) { return; } 
+			if ( sunday ) { return; }
 			ShowPremarketGap();
 			SessionStart();
 			RegularSession(); 
 			NewHighOrLow();
 			InitialBalance();
+			FindRTHmid();
 			SessionEnd();
 			Draw.TextFixed(this, "MyTextFixed", message, TextPosition.TopLeft);
 		}
@@ -242,6 +255,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 					LineText(name: "Gx Low", price: gxLow);
 					LineText(name: "Gx Mid", price: gxMid);
 				} 
+				message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString();
+				
 			} 
 		}
 		
@@ -264,7 +279,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 		
 		private void InitialBalance() {  
-			
+			Print("calling IB");
 			if (BarsInProgress == 1 && IsEqual(start: ToTime(RTHOpen) +10000, end: ToTime(Time[0])) ) {
 				IBLength += CurrentBar - rthStartBarNum; 
 				ibigh = MAX(High, IBLength)[0];
@@ -275,6 +290,20 @@ namespace NinjaTrader.NinjaScript.Indicators
 				Values[7][0] = ibLow; 			
 				LineText(name: "IB High", price: ibigh);
 				LineText(name: "IB Low", price: ibLow); 
+			}
+		}
+		
+		private void FindRTHmid() {
+			if (BarsInProgress == 1 && IsBetween(start: ToTime(RTHOpen) +10000, end: ToTime(RTHClose))) { 
+				int LookBack  =  CurrentBar - rthStartBarNum;
+				RrthHigh = MAX(High, LookBack )[0];
+				RrthLow = MIN(Low, LookBack )[0];
+				RrthMid = (( RrthHigh - rthLow ) * 0.5 )+ rthLow;
+			}
+			
+			if (IsBetween(start: ToTime(RTHOpen) +10100, end: ToTime(RTHClose))) { 
+				Values[9][0] = RrthMid;
+				LineText(name: "Mid ", price: RrthMid);
 			}
 		}
 		
@@ -323,8 +352,31 @@ namespace NinjaTrader.NinjaScript.Indicators
 				if ( ToDay(Time[0])  > ToDay(startDTE) ) {
 					//Print("\n"+Time[0] + " is greater than 5 days ago");
 					showKeyLevels = true;
+				} else {
+					showKeyLevels = false;
 				}
 			}
+		}
+		
+		private bool drawOnlyToday() {
+			bool answer = false;
+			// only show open line starting 5 days ago  
+			if (BarsInProgress == 1 && IsEqual(start: ToTime(RTHOpen), end: ToTime(Time[0])) ) {
+				//Print("inside check days "  + "  " + ToTime(Time[0]));
+		        // Get the current DateTime.
+		        DateTime now = DateTime.Now;
+				DateTime startDTE = now.AddDays(-3);
+		        // Get the TimeSpan of the difference.
+		        TimeSpan elapsed = now.Subtract(startDTE);
+		        // Get number of days ago.
+		        double daysAgo = elapsed.TotalDays; 
+				//Print("Int chart time " + ToDay(Time[0]) + " now int " + ToDay(startDTE)); 
+				if ( ToDay(Time[0])  > ToDay(startDTE) ) {
+					//Print("\n"+Time[0] + " is greater than 5 days ago");
+					answer =  true;
+				} 
+			}
+			return answer;
 		}
 		
 		private void BoxConstructor(int BoxLength, double BoxTopPrice, double BottomPrice, string BoxName) {
@@ -349,7 +401,8 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private void LineText(string name, double price) { 
 			DateTime myDate = Time[0];   
 			string prettyDate = myDate.ToString("MM/d/yyyy"); 
-			Draw.Text(this, name+prettyDate, false, name, -BarsRight, price, 0,  LineColor, myFont, TextAlignment.Left, Brushes.Transparent, LineColor, 0);
+			//Draw.Text(this, name+prettyDate, false, name, -BarsRight, price, 0,  LineColor, myFont, TextAlignment.Left, Brushes.Transparent, LineColor, 0);
+			Draw.Text(this, name, false, name, -BarsRight, price, 0,  LineColor, myFont, TextAlignment.Left, Brushes.Transparent, LineColor, 0);
 		}
 		
 		private bool IsEqual(int start, int end) {
@@ -393,13 +446,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 				
                 if (dateOnly == prettyDate)
                 {
-                    Print("\nToday is " + holiday.Value + "\n");
+                   // Print("\nToday is " + holiday.Value + "\n");
 					sunday = true;
                     //if (Bars.IsFirstBarOfSession)
                     //{ 
                         
                         Draw.Text(this, "holiday"+prettyDate, true, holiday.Value, 0, MAX(High, 20)[1], 1, Brushes.DarkGoldenrod, myFont, TextAlignment.Center, Brushes.Transparent, Brushes.Transparent, 50);
-						Print(holiday.Value + "  " + Time[0].ToShortDateString() );
+						//Print(holiday.Value + "  " + Time[0].ToShortDateString() );
                     //}
                 }
 			}
