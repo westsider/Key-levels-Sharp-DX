@@ -39,8 +39,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 	    private double  gxLow 		= 0.0;
 		private double 	gxMid 		= 0.0;
 		private double 	RrthHigh 	= 0.0;
+		private double 	GlobexRange = 0.0;
 	    private double  RrthLow 		= 0.0;
 		private double 	RrthMid 		= 0.0;
+		private double 	TodaysRange = 0.0;
+		private bool InRange = false;
 		
 		private double  todayOpen 	= 0.0;
 		private double  Gap_D 		= 0.0;
@@ -56,6 +59,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 		private double	rthHigh		 = 0.0;
 	    private double 	rthLow 		= 0.0;
 		private double HalfGapLevel = 0.0;
+		private double HalfGapExtreme = 0.0;
 		private NinjaTrader.Gui.Tools.SimpleFont myFont = new NinjaTrader.Gui.Tools.SimpleFont("Helvetica", 12) { Size = 12, Bold = false };
 		private bool Debug 			= false;
 //		private Series<double> yestHighSeries;
@@ -102,6 +106,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 				AddPlot(Brushes.DimGray, "IB Low");
 				AddPlot(Brushes.DimGray, "Half Gap"); 
 				AddPlot(Brushes.DimGray, "Mid");
+				AddPlot(Brushes.DimGray, "HalfGapExtreme");
 			}
 			else if (State == State.Configure)
 			{
@@ -193,12 +198,14 @@ namespace NinjaTrader.NinjaScript.Indicators
 			SessionStart();
 			RegularSession(); 
 			NewHighOrLow();
+			ShowPremarketGap();
 			InitialBalance();
 			FindRTHmid();
 			SessionEnd();
 			Draw.TextFixed(this, "MyTextFixed", message, TextPosition.TopLeft);
 		}
 		
+	
 		private void SessionStart() {  			
 			
 			if (BarsInProgress == 1 && IsEqual(start: ToTime(RTHOpen), end: ToTime(Time[0])) ) {
@@ -206,13 +213,16 @@ namespace NinjaTrader.NinjaScript.Indicators
 				gxBars = rthStartBarNum - rthEndBarNum;
 				todayOpen = Open[0];
 				Gap_D = todayOpen - Close_D; 				
-				message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString();
-				
+				TodaysRange = 0.0;
 				if ( gxBars > 0 ) {
 	                gxHigh = MAX(High, gxBars)[0];
 	                gxLow = MIN(Low, gxBars)[0];
 					gxMid = ((gxHigh - gxLow) * 0.5) + gxLow; 
+					GlobexRange = gxHigh - gxLow;
 				} 
+				message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString()
+				+  "  Gap: " + Gap_D.ToString("N2")
+				+  "  Globex Range: " + GlobexRange.ToString("N2");
             }
 		}
 		
@@ -237,9 +247,11 @@ namespace NinjaTrader.NinjaScript.Indicators
 					Values[8][0] = HalfGapLevel;
 					Values[1][0] = yHigh;
 					Values[2][0] = yLow;
+					if ( !InRange ) { Values[6][0] = HalfGapExtreme; }
 					LineText(name: "Y High", price: yHigh); 
 					LineText(name: "Y Low", price: yLow); 
 					LineText(name: "1/2 Gap", price: HalfGapLevel);
+					if ( !InRange ) {  LineText(name: "1/2 G Ext?", price: HalfGapExtreme);}
 				} 
 				
 				if (todayOpen > 0.0 ) {
@@ -254,8 +266,19 @@ namespace NinjaTrader.NinjaScript.Indicators
 					LineText(name: "Gx High", price: gxHigh);
 					LineText(name: "Gx Low", price: gxLow);
 					LineText(name: "Gx Mid", price: gxMid);
+					
 				} 
-				message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString();
+				//message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString() +  "  Gap: " + Gap_D.ToString();
+				
+				if (BarsInProgress == 1 ) {
+					message =  Time[0].ToShortDateString() + " "  + Time[0].ToShortTimeString() 
+					+  "   Gap: " + Gap_D.ToString("N2")
+					+  "   Gx Range: " + GlobexRange.ToString("N2");
+					
+					if ( TodaysRange != 0.0 ) {
+						message +=  "   RTH Range: " + TodaysRange.ToString("N2");
+					}
+				}
 				
 			} 
 		}
@@ -270,6 +293,24 @@ namespace NinjaTrader.NinjaScript.Indicators
 					preMarketLength += 1;
 					GapHigh = Close[0];
 					GapLow = Close_D;
+					
+					/// show half gap using hod / lod when ope out of range
+					//double GapUsingPriorExtreme = 0.0;
+					
+					if (Close[0] > yLow && Close[0] < yHigh) {
+						InRange = true;
+					} else {
+						InRange = false;
+					}
+					if ( !InRange ) {
+						if ( Close[0] <= Close_D ) { 		/// gap down
+							//GapUsingPriorExtreme =  yLow;
+							HalfGapExtreme = ((yLow - Close[0]) / 2) + Close[0]; //HalfGapExtreme
+						} else {							// gap up
+							//GapUsingPriorExtreme =  yHigh;
+							HalfGapExtreme = ((Close[0] - yHigh) / 2) + yHigh; //HalfGapExtreme
+						}
+					}
 					HalfGapLevel = ((GapHigh - GapLow) / 2) + GapLow;
 				}
 				if ( ShowGap ) { BoxConstructor(BoxLength: preMarketLength, BoxTopPrice: GapHigh, BottomPrice: GapLow, BoxName: "gapBox"); }
@@ -278,8 +319,7 @@ namespace NinjaTrader.NinjaScript.Indicators
 			}
 		}
 		
-		private void InitialBalance() {  
-			Print("calling IB");
+		private void InitialBalance() {   
 			if (BarsInProgress == 1 && IsEqual(start: ToTime(RTHOpen) +10000, end: ToTime(Time[0])) ) {
 				IBLength += CurrentBar - rthStartBarNum; 
 				ibigh = MAX(High, IBLength)[0];
@@ -294,11 +334,13 @@ namespace NinjaTrader.NinjaScript.Indicators
 		}
 		
 		private void FindRTHmid() {
-			if (BarsInProgress == 1 && IsBetween(start: ToTime(RTHOpen) +10000, end: ToTime(RTHClose))) { 
+			if (BarsInProgress == 1 && IsBetween(start: ToTime(RTHOpen) +4000, end: ToTime(RTHClose))) { 
 				int LookBack  =  CurrentBar - rthStartBarNum;
 				RrthHigh = MAX(High, LookBack )[0];
-				RrthLow = MIN(Low, LookBack )[0];
+				rthLow = MIN(Low, LookBack )[0];
 				RrthMid = (( RrthHigh - rthLow ) * 0.5 )+ rthLow;
+				TodaysRange = RrthHigh - rthLow;
+				//Print(Time[0] + " high: " + RrthHigh + " low: " + rthLow  );
 			}
 			
 			if (IsBetween(start: ToTime(RTHOpen) +10100, end: ToTime(RTHClose))) { 
